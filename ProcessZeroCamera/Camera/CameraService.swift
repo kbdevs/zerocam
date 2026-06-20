@@ -168,8 +168,8 @@ final class CameraService: NSObject, @unchecked Sendable {
             guard let device = self.videoDevice else { return }
 
             do {
-                try self.applyDisplayZoomFactor(displayFactor, to: device)
-                self.publishZoomState(for: device)
+                let targetDevice = self.previewDevice(for: displayFactor) ?? device
+                try self.replaceVideoDevice(with: targetDevice, displayZoomFactor: displayFactor, publish: true)
             } catch {
                 return
             }
@@ -218,13 +218,15 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func preferredBackCamera() -> AVCaptureDevice? {
+        backCamera(.builtInWideAngleCamera)
+            ?? backCamera(.builtInTripleCamera)
+            ?? backCamera(.builtInDualWideCamera)
+            ?? backCamera(.builtInDualCamera)
+    }
+
+    private func backCamera(_ deviceType: AVCaptureDevice.DeviceType) -> AVCaptureDevice? {
         let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [
-                .builtInTripleCamera,
-                .builtInDualWideCamera,
-                .builtInDualCamera,
-                .builtInWideAngleCamera
-            ],
+            deviceTypes: [deviceType],
             mediaType: .video,
             position: .back
         )
@@ -344,14 +346,11 @@ final class CameraService: NSObject, @unchecked Sendable {
 
     private func publishZoomState(for device: AVCaptureDevice) {
         let multiplier = max(zoomDisplayMultiplier(for: device), 0.001)
-        let maxDisplayFactor = min(device.maxAvailableVideoZoomFactor * multiplier, 15)
-
-        var nativeFactors = [device.minAvailableVideoZoomFactor, 1]
-        nativeFactors.append(contentsOf: device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) })
-
-        let minDisplayFactor = device.minAvailableVideoZoomFactor * multiplier
-        let lensFactors = nativeFactors
-            .map { factor in factor * multiplier }
+        let fallbackMinDisplayFactor = device.minAvailableVideoZoomFactor * multiplier
+        let fallbackMaxDisplayFactor = device.maxAvailableVideoZoomFactor * multiplier
+        let minDisplayFactor = availableLensDisplayFactors().min() ?? fallbackMinDisplayFactor
+        let maxDisplayFactor = min(maxAvailableDisplayZoomFactor(fallback: fallbackMaxDisplayFactor), 15)
+        let lensFactors = availableLensDisplayFactors()
             .filter { factor in factor >= minDisplayFactor && factor <= maxDisplayFactor }
             .sorted()
             .reduce(into: [CGFloat]()) { result, factor in
@@ -362,7 +361,7 @@ final class CameraService: NSObject, @unchecked Sendable {
         let state = ZoomState(
             factor: device.videoZoomFactor,
             displayFactor: device.videoZoomFactor * multiplier,
-            minFactor: device.minAvailableVideoZoomFactor * multiplier,
+            minFactor: minDisplayFactor,
             maxFactor: maxDisplayFactor,
             lensDisplayFactors: lensFactors
         )
@@ -373,36 +372,22 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func zoomDisplayMultiplier(for device: AVCaptureDevice) -> CGFloat {
-        // On virtual ultra-wide stacks, raw zoom 1.0 is the 0.5x lens; the first switch-over is the real 1x wide lens.
-        if let virtualWideZoomFactor = virtualWideZoomFactor(for: device) {
-            return 1 / virtualWideZoomFactor
-        }
-
         switch device.deviceType {
         case .builtInUltraWideCamera:
             return 0.5
+        case .builtInWideAngleCamera:
+            return 1
         case .builtInTelephotoCamera:
             return 3
-        default:
-            break
-        }
-
-        if #available(iOS 18.0, *) {
-            return device.displayVideoZoomFactorMultiplier
-        }
-
-        return 1
-    }
-
-    private func virtualWideZoomFactor(for device: AVCaptureDevice) -> CGFloat? {
-        switch device.deviceType {
         case .builtInTripleCamera, .builtInDualWideCamera:
-            return device.virtualDeviceSwitchOverVideoZoomFactors
+            let wideSwitchOver = device.virtualDeviceSwitchOverVideoZoomFactors
                 .map { CGFloat(truncating: $0) }
                 .filter { $0 > device.minAvailableVideoZoomFactor }
                 .min()
+
+            return wideSwitchOver.map { 1 / $0 } ?? 1
         default:
-            return nil
+            return 1
         }
     }
 
@@ -475,7 +460,13 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func physicalBackCamerasSorted(for displayZoomFactor: CGFloat) -> [AVCaptureDevice] {
-        let discovery = AVCaptureDevice.DiscoverySession(
+        physicalBackCameras().sorted {
+            abs(baseDisplayZoomFactor(for: $0) - displayZoomFactor) < abs(baseDisplayZoomFactor(for: $1) - displayZoomFactor)
+        }
+    }
+
+    private func physicalBackCameras() -> [AVCaptureDevice] {
+        AVCaptureDevice.DiscoverySession(
             deviceTypes: [
                 .builtInUltraWideCamera,
                 .builtInWideAngleCamera,
@@ -483,19 +474,38 @@ final class CameraService: NSObject, @unchecked Sendable {
             ],
             mediaType: .video,
             position: .back
-        )
+        ).devices
+    }
 
-        return discovery.devices.sorted {
-            abs(baseDisplayZoomFactor(for: $0) - displayZoomFactor) < abs(baseDisplayZoomFactor(for: $1) - displayZoomFactor)
+    private func previewDevice(for displayZoomFactor: CGFloat) -> AVCaptureDevice? {
+        if displayZoomFactor < 1, let ultraWide = backCamera(.builtInUltraWideCamera) {
+            return ultraWide
         }
+
+        if displayZoomFactor >= 3, let telephoto = backCamera(.builtInTelephotoCamera) {
+            return telephoto
+        }
+
+        return backCamera(.builtInWideAngleCamera) ?? physicalBackCamerasSorted(for: displayZoomFactor).first
+    }
+
+    private func availableLensDisplayFactors() -> [CGFloat] {
+        physicalBackCameras()
+            .map(baseDisplayZoomFactor(for:))
+            .sorted()
+            .reduce(into: [CGFloat]()) { result, factor in
+                guard !result.contains(where: { abs($0 - factor) < 0.03 }) else { return }
+                result.append(factor)
+            }
+    }
+
+    private func maxAvailableDisplayZoomFactor(fallback: CGFloat) -> CGFloat {
+        physicalBackCameras()
+            .map { $0.maxAvailableVideoZoomFactor * zoomDisplayMultiplier(for: $0) }
+            .max() ?? fallback
     }
 
     private func baseDisplayZoomFactor(for device: AVCaptureDevice) -> CGFloat {
-        let multiplier = zoomDisplayMultiplier(for: device)
-        if abs(multiplier - 1) > 0.001 {
-            return multiplier
-        }
-
         switch device.deviceType {
         case .builtInUltraWideCamera:
             return 0.5
