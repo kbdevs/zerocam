@@ -1,0 +1,19 @@
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Signing and local secrets
+*.mobileprovision
+*.p12
+*.cer
+*.key
+.env
+.env.*

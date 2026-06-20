@@ -1,0 +1,19 @@
+name: ProcessZeroCamera
+options:
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  ProcessZeroCamera:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ProcessZeroCamera
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kb.processzerocamera
+        INFOPLIST_FILE: ProcessZeroCamera/Info.plist
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: 1
+        SUPPORTS_MACCATALYST: NO
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
