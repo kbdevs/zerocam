@@ -194,7 +194,7 @@ final class CameraService: NSObject, @unchecked Sendable {
 
         session.sessionPreset = .photo
 
-        guard let device = preferredBackCamera() else {
+        guard let device = preferredPreviewCamera() else {
             throw CameraError.missingCamera
         }
 
@@ -217,7 +217,16 @@ final class CameraService: NSObject, @unchecked Sendable {
         isConfigured = true
     }
 
-    private func preferredBackCamera() -> AVCaptureDevice? {
+    private func preferredPreviewCamera() -> AVCaptureDevice? {
+        backCamera(.builtInTripleCamera)
+            ?? backCamera(.builtInDualWideCamera)
+            ?? backCamera(.builtInDualCamera)
+            ?? backCamera(.builtInWideAngleCamera)
+            ?? backCamera(.builtInUltraWideCamera)
+            ?? backCamera(.builtInTelephotoCamera)
+    }
+
+    private func preferredPhysicalBackCamera() -> AVCaptureDevice? {
         backCamera(.builtInWideAngleCamera)
             ?? backCamera(.builtInTripleCamera)
             ?? backCamera(.builtInDualWideCamera)
@@ -294,11 +303,12 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func prepareRawCapture(for displayZoomFactor: CGFloat) throws -> RawCapturePlan {
-        if let bayerRawFormat = preferredBayerRawFormat() {
+        let shouldRestoreVirtualCamera = videoDevice.map(isVirtualBackCamera) ?? false
+
+        if !shouldRestoreVirtualCamera, let bayerRawFormat = preferredBayerRawFormat() {
             return RawCapturePlan(rawMode: .bayer(bayerRawFormat), rawKind: .bayer, shouldRestoreVirtualCamera: false)
         }
 
-        let shouldRestoreVirtualCamera = videoDevice.map(isVirtualBackCamera) ?? false
         let candidates = physicalBackCamerasSorted(for: displayZoomFactor)
 
         for candidate in candidates {
@@ -455,7 +465,7 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func restoreVirtualCamera(displayZoomFactor: CGFloat) {
-        guard let device = preferredBackCamera() else { return }
+        guard let device = preferredPreviewCamera() else { return }
         try? replaceVideoDevice(with: device, displayZoomFactor: displayZoomFactor, publish: true)
     }
 
@@ -478,6 +488,10 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func previewDevice(for displayZoomFactor: CGFloat) -> AVCaptureDevice? {
+        if let virtualCamera = preferredVirtualBackCamera() {
+            return virtualCamera
+        }
+
         if displayZoomFactor < 1, let ultraWide = backCamera(.builtInUltraWideCamera) {
             return ultraWide
         }
@@ -486,7 +500,13 @@ final class CameraService: NSObject, @unchecked Sendable {
             return telephoto
         }
 
-        return backCamera(.builtInWideAngleCamera) ?? physicalBackCamerasSorted(for: displayZoomFactor).first
+        return preferredPhysicalBackCamera() ?? physicalBackCamerasSorted(for: displayZoomFactor).first
+    }
+
+    private func preferredVirtualBackCamera() -> AVCaptureDevice? {
+        backCamera(.builtInTripleCamera)
+            ?? backCamera(.builtInDualWideCamera)
+            ?? backCamera(.builtInDualCamera)
     }
 
     private func availableLensDisplayFactors() -> [CGFloat] {
