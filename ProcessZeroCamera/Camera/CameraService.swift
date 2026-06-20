@@ -121,6 +121,7 @@ final class CameraService: NSObject, @unchecked Sendable {
 
             do {
                 try device.lockForConfiguration()
+                self.applyFixedConstituentDeviceSwitchingBehavior(to: device)
 
                 if device.isFocusPointOfInterestSupported {
                     device.focusPointOfInterest = devicePoint
@@ -417,7 +418,22 @@ final class CameraService: NSObject, @unchecked Sendable {
 
         try device.lockForConfiguration()
         device.videoZoomFactor = clampedZoom
+        applyFixedConstituentDeviceSwitchingBehavior(to: device)
         device.unlockForConfiguration()
+    }
+
+    private func applyFixedConstituentDeviceSwitchingBehavior(to device: AVCaptureDevice) {
+        guard device.isVirtualDevice,
+              device.primaryConstituentDeviceSwitchingBehavior != .unsupported
+        else {
+            return
+        }
+
+        device.setPrimaryConstituentDeviceSwitchingBehavior(
+            .restricted,
+            restrictedSwitchingBehaviorConditions: []
+        )
+        device.fallbackPrimaryConstituentDevices = []
     }
 
     private func replaceVideoDevice(with device: AVCaptureDevice, displayZoomFactor: CGFloat, publish: Bool) throws {
