@@ -373,11 +373,37 @@ final class CameraService: NSObject, @unchecked Sendable {
     }
 
     private func zoomDisplayMultiplier(for device: AVCaptureDevice) -> CGFloat {
+        // On virtual ultra-wide stacks, raw zoom 1.0 is the 0.5x lens; the first switch-over is the real 1x wide lens.
+        if let virtualWideZoomFactor = virtualWideZoomFactor(for: device) {
+            return 1 / virtualWideZoomFactor
+        }
+
+        switch device.deviceType {
+        case .builtInUltraWideCamera:
+            return 0.5
+        case .builtInTelephotoCamera:
+            return 3
+        default:
+            break
+        }
+
         if #available(iOS 18.0, *) {
             return device.displayVideoZoomFactorMultiplier
         }
 
         return 1
+    }
+
+    private func virtualWideZoomFactor(for device: AVCaptureDevice) -> CGFloat? {
+        switch device.deviceType {
+        case .builtInTripleCamera, .builtInDualWideCamera:
+            return device.virtualDeviceSwitchOverVideoZoomFactors
+                .map { CGFloat(truncating: $0) }
+                .filter { $0 > device.minAvailableVideoZoomFactor }
+                .min()
+        default:
+            return nil
+        }
     }
 
     private func currentDisplayZoomFactor() -> CGFloat {
