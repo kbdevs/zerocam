@@ -26,7 +26,7 @@ final class PhotoProcessor {
         }
 
         if filter.isLensCorrectionSupported {
-            filter.isLensCorrectionEnabled = false
+            filter.isLensCorrectionEnabled = true
         }
 
         if filter.isLuminanceNoiseReductionSupported {
