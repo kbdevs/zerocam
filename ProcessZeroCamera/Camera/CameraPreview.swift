@@ -10,7 +10,7 @@ struct CameraPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
-        view.videoPreviewLayer.videoGravity = .resizeAspect
+        view.videoPreviewLayer.videoGravity = .resizeAspectFill
         view.setInterfaceOrientation(interfaceOrientation)
         view.onTapToFocus = onTapToFocus
         return view
@@ -18,7 +18,7 @@ struct CameraPreview: UIViewRepresentable {
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.videoPreviewLayer.session = session
-        uiView.videoPreviewLayer.videoGravity = .resizeAspect
+        uiView.videoPreviewLayer.videoGravity = .resizeAspectFill
         uiView.setInterfaceOrientation(interfaceOrientation)
         uiView.onTapToFocus = onTapToFocus
     }

@@ -13,19 +13,7 @@ struct CameraView: View {
 
                 switch viewModel.authorizationState {
                 case .authorized:
-                    CameraPreview(
-                        session: viewModel.session,
-                        interfaceOrientation: viewModel.interfaceOrientation,
-                        onTapToFocus: viewModel.focus(at:viewPoint:)
-                    )
-                        .ignoresSafeArea()
-                        .overlay {
-                            if let focusPoint = viewModel.focusPoint {
-                                FocusReticle()
-                                    .position(focusPoint)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
-                        }
+                    viewfinder(size: geometry.size, isLandscape: isLandscape)
                 case .notDetermined:
                     ProgressView()
                         .tint(.white)
@@ -76,6 +64,27 @@ struct CameraView: View {
                 LastCaptureViewer(image: viewModel.lastCapturedImage) {
                     viewModel.showingLastCapture = false
                 }
+            }
+        }
+    }
+
+    private func viewfinder(size: CGSize, isLandscape: Bool) -> some View {
+        let aspectRatio: CGFloat = isLandscape ? 4 / 3 : 3 / 4
+        let width = min(size.width, size.height * aspectRatio)
+        let height = width / aspectRatio
+
+        return CameraPreview(
+            session: viewModel.session,
+            interfaceOrientation: viewModel.interfaceOrientation,
+            onTapToFocus: viewModel.focus(at:viewPoint:)
+        )
+        .frame(width: width, height: height)
+        .clipped()
+        .overlay {
+            if let focusPoint = viewModel.focusPoint {
+                FocusReticle()
+                    .position(focusPoint)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
     }
